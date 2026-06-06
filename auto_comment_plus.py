@@ -679,18 +679,24 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                             )
                         )
                     
-                    if Comment_resp.status_code == 200 and Comment_resp.json().get("success"):
+                    try:
+                        comment_result = Comment_resp.json()
+                    except ValueError:
+                        comment_result = None
+
+                    if Comment_resp.status_code == 200 and isinstance(comment_result, dict) and comment_result.get("success"):
                         if logger:
                             logger.info(f"\t{i}.评价订单\t{oname}[{oid}]评论成功")
                     else:
                         if logger:
+                            if comment_result is None:
+                                logger.warning("评价接口未返回 JSON，原始响应: %s", Comment_resp.text[:200])
+                            else:
+                                logger.warning("评价接口返回失败: %s", comment_result)
                             logger.warning(f"\t{i}.评价订单\t{oname}[{oid}]评论失败")
                 except requests.RequestException as e:
                     if logger:
                         logger.error(f"Failed to submit comment: {e}")
-                except (ValueError, KeyError) as e:
-                    if logger:
-                        logger.error(f"Failed to parse response: {e}")
             else:
                 if logger:
                     logger.debug("Skipped sending comment request in dry run")
