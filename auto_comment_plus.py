@@ -17,6 +17,8 @@ import jieba.analyse
 import requests
 import yaml
 from lxml import etree
+from PIL import Image
+import io
 
 import jdspider
 
@@ -115,6 +117,24 @@ def download_image(img_url, file_name):
 
 
 # 上传图片到JD接口
+# 重新处理图片质量
+def process_image(file_path, quality=98):
+    """重新处理图片质量，防止京东压缩"""
+    try:
+        img = Image.open(file_path)
+        # 转换为RGB模式（如果是RGBA或P模式）
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        # 重新保存为高质量JPEG，subsampling=0保持最佳质量
+        output = io.BytesIO()
+        img.save(output, format="JPEG", quality=quality, subsampling=0)
+        with open(file_path, "wb") as f:
+            f.write(output.getvalue())
+        return file_path
+    except Exception as e:
+        print(f"图片处理失败: {e}")
+        return file_path
+
 def upload_image(file_path, session, headers):
 
     files = {
@@ -152,18 +172,16 @@ def generation(pname, _class: int = 0, _type: int = 1, opts: object = None):
         # 增加对增值服务的评价鉴别
         if "赠品" in pname or "非实物" in pname or "增值服务" in pname:
             result = [
-                "赠品挺好的。",
-                "很贴心，能有这样免费赠送的赠品!",
-                "正好想着要不要多买一份增值服务，没想到还有这样的赠品。",
-                "赠品正合我意。",
-                "赠品很好，挺不错的。",
-                "本来买了产品以后还有些担心。但是看到赠品以后就放心了。",
-                "不论品质如何，至少说明店家对客的态度很好！",
-                "我很喜欢这些商品！",
-                "我对于商品的附加值很在乎，恰好这些赠品为这件商品提供了这样的的附加值，这令我很满意。"
-                "感觉现在的网购环境环境越来越好了，以前网购的时候还没有过么多贴心的赠品和增值服务",
-                "第一次用京东，被这种赠品和增值服物的良好态度感动到了。",
-                "赠品还行。",
+                "商家太客气了，还送了小赠品，收到货很惊喜",
+                "本来只买了主品，没想到还有赠品送，实属意外惊喜",
+                "赠品虽小但很实用，商家用心了，会再来",
+                "没想到会送赠品，包装也很好，好评必须的",
+                "主品质量很好，赠品也毫不含糊，满意",
+                "感谢商家的赠品，小小心意很暖心",
+                "购物体验很好，赠品是加分项，会推荐给朋友",
+                "赠品质量也不错，不鸡肋，给商家点赞",
+                "本来没期待赠品，收到后发现挺实用的，惊喜",
+                "商家很大方，赠品包装也很精美，赞一个",
             ]
         else:
             result = spider.getData(4, 3)  # 这里可以自己改
@@ -177,7 +195,7 @@ def generation(pname, _class: int = 0, _type: int = 1, opts: object = None):
         opts["logger"].warning(
             'jieba textrank analysis error: %s, name fallback to "宝贝"', e
         )
-        name = "宝贝"
+        name = pname[:10] if pname else "商品"
     if _class == 1:
         opts["logger"].debug("_class is 1. Directly return name")
         return name
@@ -357,6 +375,8 @@ def ordinary(N, opts=None):
                 imgName1 = generate_unique_filename()
                 opts["logger"].debug(f"Image :{imgName1}")
                 downloaded_file1 = download_image(imgurl1, imgName1)
+                if downloaded_file1:
+                    process_image(downloaded_file1, quality=98)
                 # 上传图片
                 if downloaded_file1:
                     imgPart1 = upload_image(imgName1, session, headers)
@@ -370,6 +390,8 @@ def ordinary(N, opts=None):
                 imgName2 = generate_unique_filename()
                 opts["logger"].debug(f"Image :{imgName2}")
                 downloaded_file2 = download_image(imgurl2, imgName2)
+                if downloaded_file2:
+                    process_image(downloaded_file2, quality=98)
                 # 上传图片
                 if downloaded_file2:
                     imgPart2 = upload_image(imgName2, session, headers)
