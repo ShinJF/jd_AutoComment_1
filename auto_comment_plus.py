@@ -34,6 +34,8 @@ ORDINARY_SLEEP_SEC = 10
 SUNBW_SLEEP_SEC = 5
 REVIEW_SLEEP_SEC = 10
 SERVICE_RATING_SLEEP_SEC = 15
+JD_IMAGE_UPLOAD_URL = "https://club.jd.com/myJdcomments/ajaxUploadImage.action"
+JD_IMAGE_CDN_PREFIX = "//img14.360buyimg.com/shaidan/"
 
 # 默认评价模板
 DEFAULT_COMMENTS = [
@@ -200,15 +202,27 @@ def upload_image(filename: str, file_path: str, session: requests.Session, heade
     Returns:
         响应对象，失败返回None
     """
+    upload_headers = headers.copy()
+    upload_headers.update(
+        {
+            "Accept": "*/*",
+            "Origin": "https://club.jd.com",
+            "Referer": "https://club.jd.com/myJdcomments/myJdcomment.action",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+    )
+    upload_headers.pop("Content-Type", None)
+
     try:
         files = {
             "name": (None, filename),
-            "Filedata": (file_path, open(file_path, "rb"), "image/jpeg"),
+            "Filedata": (filename, open(file_path, "rb"), "image/jpeg"),
+            "upload": (None, "Submit Query"),
         }
         
         response = session.post(
-            "https://club.jd.com/myJdcomments/ajaxUploadImage.action",
-            headers=headers,
+            JD_IMAGE_UPLOAD_URL,
+            headers=upload_headers,
             files=files,
             timeout=30
         )
@@ -222,9 +236,11 @@ def upload_image(filename: str, file_path: str, session: requests.Session, heade
             files["Filedata"][1].close()
 
 
-def get_uploaded_image_path(response: requests.Response | None, logger: logging.Logger | None = None) -> str:
-    """Extract a valid uploaded jpg path from JD's upload response."""
+def get_uploaded_image_url(response: requests.Response | None, logger: logging.Logger | None = None) -> str:
+    """Extract a usable uploaded image URL from JD's upload response."""
     if not response or response.status_code != 200:
+        if logger and response:
+            logger.warning("上传图片接口状态码异常: %s", response.status_code)
         return ""
 
     text = response.text.strip()
@@ -233,12 +249,33 @@ def get_uploaded_image_path(response: requests.Response | None, logger: logging.
             logger.warning("上传图片接口返回异常内容，已忽略")
         return ""
 
-    if not text.lower().endswith(".jpg"):
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+
+    if isinstance(data, dict):
+        text = (
+            data.get("url")
+            or data.get("path")
+            or data.get("data")
+            or data.get("result")
+            or text
+        )
+        if isinstance(text, dict):
+            text = text.get("url") or text.get("path") or ""
+
+    text = str(text).strip().strip('"')
+    lowered = text.lower()
+    if not lowered.endswith((".jpg", ".jpeg", ".png")):
         if logger:
             logger.warning("上传图片接口未返回 jpg 路径，已忽略: %s", text[:120])
         return ""
 
-    return text
+    if lowered.startswith(("http://", "https://", "//")):
+        return text
+
+    return f"{JD_IMAGE_CDN_PREFIX}{text.lstrip('/')}"
 
 
 # 评价生成
@@ -571,8 +608,6 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                         logger.info("imgurl2 url: %s", imgurl2)
                     
                     session = requests.Session()
-                    imgBasic = "//img20.360buyimg.com/shaidan/s645x515_"
-
                     if opts.get("dry_run"):
                         if logger:
                             logger.debug("Skipped image download/upload in dry run")
@@ -589,9 +624,9 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                         if downloaded_file1:
                             process_image(downloaded_file1, quality=98)
                             imgPart1 = upload_image(imgName1, downloaded_file1, session, headers)
-                            uploaded_path1 = get_uploaded_image_path(imgPart1, logger)
-                            if uploaded_path1:
-                                imgurl1 = f"{imgBasic}{uploaded_path1}"
+                            uploaded_url1 = get_uploaded_image_url(imgPart1, logger)
+                            if uploaded_url1:
+                                imgurl1 = uploaded_url1
                             else:
                                 if logger:
                                     logger.info("上传图片1失败")
@@ -606,9 +641,9 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                         if downloaded_file2:
                             process_image(downloaded_file2, quality=98)
                             imgPart2 = upload_image(imgName2, downloaded_file2, session, headers)
-                            uploaded_path2 = get_uploaded_image_path(imgPart2, logger)
-                            if uploaded_path2:
-                                imgurl2 = f"{imgBasic}{uploaded_path2}"
+                            uploaded_url2 = get_uploaded_image_url(imgPart2, logger)
+                            if uploaded_url2:
+                                imgurl2 = uploaded_url2
                             else:
                                 if logger:
                                     logger.info("上传图片2失败")
