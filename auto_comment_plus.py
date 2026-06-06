@@ -551,43 +551,50 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                     
                     session = requests.Session()
                     imgBasic = "//img20.360buyimg.com/shaidan/s645x515_"
+
+                    if opts.get("dry_run"):
+                        if logger:
+                            logger.debug("Skipped image download/upload in dry run")
+                        imgCommentCount_bool = False
+                        imgurl = ""
+                    else:
                     
-                    # 下载并上传第一张图片
-                    imgName1 = generate_unique_filename()
-                    if logger:
-                        logger.debug(f"Image :{imgName1}")
-                    
-                    downloaded_file1 = download_image(imgurl1, imgName1)
-                    if downloaded_file1:
-                        process_image(downloaded_file1, quality=98)
-                        imgPart1 = upload_image(imgName1, downloaded_file1, session, headers)
-                        if imgPart1 and imgPart1.status_code == 200 and ".jpg" in imgPart1.text:
-                            imgurl1 = f"{imgBasic}{imgPart1.text}"
-                        else:
-                            if logger:
-                                logger.info("上传图片1失败")
-                            imgurl1 = ""
-                    
-                    # 下载并上传第二张图片
-                    imgName2 = generate_unique_filename()
-                    if logger:
-                        logger.debug(f"Image :{imgName2}")
-                    
-                    downloaded_file2 = download_image(imgurl2, imgName2)
-                    if downloaded_file2:
-                        process_image(downloaded_file2, quality=98)
-                        imgPart2 = upload_image(imgName2, downloaded_file2, session, headers)
-                        if imgPart2 and imgPart2.status_code == 200 and ".jpg" in imgPart2.text:
-                            imgurl2 = f"{imgBasic}{imgPart2.text}"
-                        else:
-                            if logger:
-                                logger.info("上传图片2失败")
-                            imgurl2 = ""
-                    
-                    imgurl = f"{imgurl1},{imgurl2}"
-                    if logger:
-                        logger.debug("Image URL: %s", imgurl)
-                        logger.info(f"\t\t图片url={imgurl}")
+                        # 下载并上传第一张图片
+                        imgName1 = generate_unique_filename()
+                        if logger:
+                            logger.debug(f"Image :{imgName1}")
+                        
+                        downloaded_file1 = download_image(imgurl1, imgName1)
+                        if downloaded_file1:
+                            process_image(downloaded_file1, quality=98)
+                            imgPart1 = upload_image(imgName1, downloaded_file1, session, headers)
+                            if imgPart1 and imgPart1.status_code == 200 and ".jpg" in imgPart1.text:
+                                imgurl1 = f"{imgBasic}{imgPart1.text}"
+                            else:
+                                if logger:
+                                    logger.info("上传图片1失败")
+                                imgurl1 = ""
+                        
+                        # 下载并上传第二张图片
+                        imgName2 = generate_unique_filename()
+                        if logger:
+                            logger.debug(f"Image :{imgName2}")
+                        
+                        downloaded_file2 = download_image(imgurl2, imgName2)
+                        if downloaded_file2:
+                            process_image(downloaded_file2, quality=98)
+                            imgPart2 = upload_image(imgName2, downloaded_file2, session, headers)
+                            if imgPart2 and imgPart2.status_code == 200 and ".jpg" in imgPart2.text:
+                                imgurl2 = f"{imgBasic}{imgPart2.text}"
+                            else:
+                                if logger:
+                                    logger.info("上传图片2失败")
+                                imgurl2 = ""
+                        
+                        imgurl = f"{imgurl1},{imgurl2}"
+                        if logger:
+                            logger.debug("Image URL: %s", imgurl)
+                            logger.info(f"\t\t图片url={imgurl}")
                 else:
                     imgurl = ""
             
@@ -1278,11 +1285,15 @@ if __name__ == "__main__":
     
     # 设置Cookie
     ck = cfg["user"]["cookie"]
+    if not ck or ck == "<Cookie>":
+        if logger:
+            logger.error("请先在 config.user.yml 中配置真实京东 Cookie，再运行脚本。")
+        sys.exit(1)
     jdspider.cookie = ck.encode("utf-8")
 
     # 定义请求头
     headers2 = {
-        "Cookie": ck.encode("utf-8"),
+        "Cookie": ck,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/114.0.5735.110 Safari/537.36",
         "Connection": "keep-alive",
@@ -1304,7 +1315,7 @@ if __name__ == "__main__":
     }
     
     headers = {
-        "Cookie": ck.encode("utf-8"),
+        "Cookie": ck,
         "User-Agent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0 Sec-Ch-Ua: "Chromium";v="136", "Microsoft Edge";v="136", "Not.A/Brand";v="99"',
         "DNT": "1",
     }
