@@ -180,7 +180,9 @@ class JDSpider:
         try:
             html = etree.HTML(response.text)
             product_ids = html.xpath('//li[@class="gl-item"]/@data-sku')
-            
+            if not product_ids:
+                product_ids = html.xpath('//li[@class="gl-item"]/@data-spu')
+
             if default_logger:
                 default_logger.info("找到 %d 个相关商品", len(product_ids))
             

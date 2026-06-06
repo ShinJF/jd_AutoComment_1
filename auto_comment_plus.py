@@ -164,14 +164,10 @@ def download_image(img_url: str, file_name: str) -> str | None:
         print(f"Failed to download image: {e}")
         return None
     
-    directory = "img"
-    os.makedirs(directory, exist_ok=True)
-    file_path = os.path.join(directory, file_name)
-    
-    with open(file_path, "wb") as file:
+    with open(file_name, "wb") as file:
         file.write(response.content)
     
-    return file_path
+    return file_name
 
 
 def process_image(file_path: str, quality: int = 98) -> str:
@@ -190,11 +186,10 @@ def process_image(file_path: str, quality: int = 98) -> str:
 
 
 # 上传图片到JD接口
-def upload_image(filename: str, file_path: str, session: requests.Session, headers: dict) -> requests.Response | None:
+def upload_image(file_path: str, session: requests.Session, headers: dict) -> requests.Response | None:
     """上传图片到京东
     
     Args:
-        filename: 文件名
         file_path: 文件路径
         session: requests会话对象
         headers: 请求头
@@ -202,27 +197,16 @@ def upload_image(filename: str, file_path: str, session: requests.Session, heade
     Returns:
         响应对象，失败返回None
     """
-    upload_headers = headers.copy()
-    upload_headers.update(
-        {
-            "Accept": "*/*",
-            "Origin": "https://club.jd.com",
-            "Referer": "https://club.jd.com/myJdcomments/myJdcomment.action",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-    )
-    upload_headers.pop("Content-Type", None)
-
     try:
+        image_file = open(file_path, "rb")
         files = {
-            "name": (None, filename),
-            "Filedata": (filename, open(file_path, "rb"), "image/jpeg"),
-            "upload": (None, "Submit Query"),
+            "name": (None, file_path),
+            "Filedata": (file_path, image_file, "image/jpeg"),
         }
         
         response = session.post(
             JD_IMAGE_UPLOAD_URL,
-            headers=upload_headers,
+            headers=headers,
             files=files,
             timeout=30
         )
@@ -231,9 +215,8 @@ def upload_image(filename: str, file_path: str, session: requests.Session, heade
         print(f"Failed to upload image: {e}")
         return None
     finally:
-        # 确保文件被关闭
-        if 'files' in locals():
-            files["Filedata"][1].close()
+        if "image_file" in locals():
+            image_file.close()
 
 
 def get_uploaded_image_url(response: requests.Response | None, logger: logging.Logger | None = None) -> str:
@@ -623,7 +606,7 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                         downloaded_file1 = download_image(imgurl1, imgName1)
                         if downloaded_file1:
                             process_image(downloaded_file1, quality=98)
-                            imgPart1 = upload_image(imgName1, downloaded_file1, session, headers)
+                            imgPart1 = upload_image(imgName1, session, headers)
                             uploaded_url1 = get_uploaded_image_url(imgPart1, logger)
                             if uploaded_url1:
                                 imgurl1 = uploaded_url1
@@ -640,7 +623,7 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                         downloaded_file2 = download_image(imgurl2, imgName2)
                         if downloaded_file2:
                             process_image(downloaded_file2, quality=98)
-                            imgPart2 = upload_image(imgName2, downloaded_file2, session, headers)
+                            imgPart2 = upload_image(imgName2, session, headers)
                             uploaded_url2 = get_uploaded_image_url(imgPart2, logger)
                             if uploaded_url2:
                                 imgurl2 = uploaded_url2
@@ -1339,7 +1322,10 @@ if __name__ == "__main__":
             cfg = yaml.safe_load(f)
         if logger:
             logger.debug("Closed the configuration file")
-            logger.debug("Configurations in Python-dict format: %s", cfg)
+            safe_cfg = copy.deepcopy(cfg) if isinstance(cfg, dict) else cfg
+            if isinstance(safe_cfg, dict) and isinstance(safe_cfg.get("user"), dict):
+                safe_cfg["user"]["cookie"] = "<redacted>"
+            logger.debug("Configurations in Python-dict format: %s", safe_cfg)
     except Exception as e:
         if logger:
             logger.error("Failed to read configuration file: %s", e)
@@ -1355,7 +1341,7 @@ if __name__ == "__main__":
 
     # 定义请求头
     headers2 = {
-        "Cookie": ck,
+        "cookie": ck.encode("utf-8"),
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/114.0.5735.110 Safari/537.36",
         "Connection": "keep-alive",
@@ -1377,13 +1363,31 @@ if __name__ == "__main__":
     }
     
     headers = {
-        "Cookie": ck,
-        "User-Agent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0 Sec-Ch-Ua: "Chromium";v="136", "Microsoft Edge";v="136", "Not.A/Brand";v="99"',
+        "cookie": ck.encode("utf-8"),
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/98.0.4758.82 Safari/537.36",
+        "Connection": "keep-alive",
+        "Cache-Control": "max-age=0",
+        "sec-ch-ua": '" Not A;Brand";v="99", "Chromium";v="98", "Google Chrome";v="98"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
         "DNT": "1",
+        "Upgrade-Insecure-Requests": "1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
+        "application/signed-exchange;v=b3;q=0.9",
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Sec-Fetch-Dest": "document",
+        "Referer": "https://order.jd.com/",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "zh-CN,zh;q=0.9",
     }
     
     if logger:
-        logger.debug("Builtin HTTP request header: %s", headers)
+        safe_headers = headers.copy()
+        safe_headers["cookie"] = "<redacted>"
+        logger.debug("Builtin HTTP request header: %s", safe_headers)
         logger.debug("Starting main processes")
     
     # 执行主流程
