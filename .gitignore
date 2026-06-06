@@ -134,6 +134,7 @@ dmypy.json
 # user config
 config.user.yml
 .DS_Store
+config.yml
 .idea/
 .vscode/
 
