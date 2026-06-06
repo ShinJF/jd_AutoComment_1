@@ -222,6 +222,25 @@ def upload_image(filename: str, file_path: str, session: requests.Session, heade
             files["Filedata"][1].close()
 
 
+def get_uploaded_image_path(response: requests.Response | None, logger: logging.Logger | None = None) -> str:
+    """Extract a valid uploaded jpg path from JD's upload response."""
+    if not response or response.status_code != 200:
+        return ""
+
+    text = response.text.strip()
+    if not text or "<" in text or ">" in text or len(text) > 300:
+        if logger:
+            logger.warning("上传图片接口返回异常内容，已忽略")
+        return ""
+
+    if not text.lower().endswith(".jpg"):
+        if logger:
+            logger.warning("上传图片接口未返回 jpg 路径，已忽略: %s", text[:120])
+        return ""
+
+    return text
+
+
 # 评价生成
 def generation(pname: str, _class: int = 0, _type: int = 1, opts: dict | None = None) -> tuple[int, str] | str:
     """生成评价内容
@@ -533,17 +552,19 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                     logger.info("imgdata_url:" + img_url)
                 
                 imgdata = img_resp.json()
+                img_comments = imgdata.get("imgComments", {})
+                img_list = img_comments.get("imgList", [])
                 if logger:
-                    logger.debug("Image data: %s", imgdata)
+                    logger.debug("Image comment count: %s", img_comments.get("imgCommentCount", 0))
                 
-                if imgdata["imgComments"]["imgCommentCount"] == 0:
+                if img_comments.get("imgCommentCount", 0) == 0 or len(img_list) < 2:
                     if logger:
                         logger.warning("这单没有图片数据，所以直接默认五星好评！！")
                     imgCommentCount_bool = False
                     imgurl = ""
-                elif imgdata["imgComments"]["imgCommentCount"] > 0:
-                    imgurl1 = imgdata["imgComments"]["imgList"][0]["imageUrl"]
-                    imgurl2 = imgdata["imgComments"]["imgList"][1]["imageUrl"]
+                elif img_comments.get("imgCommentCount", 0) > 0:
+                    imgurl1 = img_list[0]["imageUrl"]
+                    imgurl2 = img_list[1]["imageUrl"]
                     
                     if logger:
                         logger.info("imgurl1 url: %s", imgurl1)
@@ -568,8 +589,9 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                         if downloaded_file1:
                             process_image(downloaded_file1, quality=98)
                             imgPart1 = upload_image(imgName1, downloaded_file1, session, headers)
-                            if imgPart1 and imgPart1.status_code == 200 and ".jpg" in imgPart1.text:
-                                imgurl1 = f"{imgBasic}{imgPart1.text}"
+                            uploaded_path1 = get_uploaded_image_path(imgPart1, logger)
+                            if uploaded_path1:
+                                imgurl1 = f"{imgBasic}{uploaded_path1}"
                             else:
                                 if logger:
                                     logger.info("上传图片1失败")
@@ -584,14 +606,19 @@ def ordinary(N: dict[str, int], opts: dict | None = None) -> dict[str, int]:
                         if downloaded_file2:
                             process_image(downloaded_file2, quality=98)
                             imgPart2 = upload_image(imgName2, downloaded_file2, session, headers)
-                            if imgPart2 and imgPart2.status_code == 200 and ".jpg" in imgPart2.text:
-                                imgurl2 = f"{imgBasic}{imgPart2.text}"
+                            uploaded_path2 = get_uploaded_image_path(imgPart2, logger)
+                            if uploaded_path2:
+                                imgurl2 = f"{imgBasic}{uploaded_path2}"
                             else:
                                 if logger:
                                     logger.info("上传图片2失败")
                                 imgurl2 = ""
                         
                         imgurl = f"{imgurl1},{imgurl2}"
+                        if not imgurl1 or not imgurl2:
+                            imgCommentCount_bool = False
+                            imgurl = ""
+
                         if logger:
                             logger.debug("Image URL: %s", imgurl)
                             logger.info(f"\t\t图片url={imgurl}")
